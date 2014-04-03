@@ -52,12 +52,13 @@
 			// Sorting
 			sortItems:                  true,
 			sortAttribute:              "label",
+			allowDragDropSorting:       false,
 
 			// Name of custom value attribute for list items
 			listItemValueAttribute:     "data-value",
 
 			// Additional list items
-			items:						[]
+			items:                      []
 		},
 
 		_create: function()
@@ -66,6 +67,18 @@
 
 			self._buildPickList();
 			self._refresh();
+
+			if (self.options.allowDragDropSorting === true && $.ui) {
+				var containerSelector = self.getContainerSelector(self.element);
+				$(containerSelector + " ul." + self.options.listClass).sortable({
+					connectWith: containerSelector + " ul." + self.options.listClass,
+					helper: 'clone',
+					stop: function (event, ui) {
+						// Change selection here
+						self._refresh();
+					}
+				}).disableSelection();
+			}
 		},
 
 		_buildPickList: function()
@@ -74,7 +87,8 @@
 
 			self._trigger("beforeBuild");
 
-			self.pickList = $("<div/>")
+			var id = self.getContainerId(self.element);
+			self.pickList = $("<div id=\"" + id + "\"/>")
 					.hide()
 					.addClass(self.options.mainClass)
 					.insertAfter(self.element)
@@ -220,6 +234,35 @@
 			self._trigger("afterPopulate");
 		},
 
+		_updateFromLists: function () {
+			var self = this;
+
+			var containerSelector = self.getContainerSelector(self.element);
+			self._removeSelections($(containerSelector + " ul." + self.options.listClass + " li"));
+
+			var sourceItemIds = [];
+			var targetItemIds = [];
+			$(containerSelector + " ul." + self.options.sourceListClass + " li").each(function () {
+				sourceItemIds.push(self._getItemValue(this));
+			});
+			$(containerSelector + " ul." + self.options.targetListClass + " li").each(function () {
+				targetItemIds.push(self._getItemValue(this));
+			});
+
+			self.element.children().filter(function () {
+				return $.inArray(this.value, sourceItemIds) != -1;
+			}).removeAttr("selected");
+
+			self.element.children().filter(function () {
+				return $.inArray(this.value, targetItemIds) != -1;
+			}).attr("selected", "selected");
+
+			self._sortSelectOptions(self.element, $(containerSelector + " ul." + self.options.targetListClass + " li"), self.options);
+
+			//self._trigger("afterAdd", null, { items: items });
+			//self._trigger("onChange", null, { type: "add", items: items });
+		},
+
 		_addItems: function(items)
 		{
 			var self = this;
@@ -308,7 +351,7 @@
 			var items = self.targetList.children();
 			self.sourceList.append( self._removeSelections(items) );
 
-			self.element.children().filter(":selected").removeAttr("selected");
+			self.element.children().filter(":selected").prop("selected", false);
 
 			self._refresh();
 
@@ -322,10 +365,17 @@
 
 			self._trigger("beforeRefresh");
 
+			if (self.options.allowDragDropSorting === true && $.ui) {
+			    self._updateFromLists();
+			}
+			else if (self.options.allowDragDropSorting === true && !$.ui) {
+			    alert("Drag and drop sorting requires jQuery UI (sortable).");
+			}
+
 			self._refreshControls();
 
 			// Sort the selection lists.
-			if(self.options.sortItems)
+			if (self.options.sortItems && self.options.allowDragDropSorting === false)
 			{
 				self._sortItems(self.sourceList, self.options);
 				self._sortItems(self.targetList, self.options);
@@ -413,6 +463,29 @@
 			for(var i = 0; i < items.length; i++)
 			{
 				list.append(items[i]);
+			}
+		},
+
+		_sortSelectOptions: function ($select, targetList, options) {
+			var items = new Array();
+			var values = new Array();
+
+			for (var i = 0; i < targetList.length; i++) {
+				var itemValue = $(targetList[i]).attr("data-value");
+				values.push(itemValue);
+				items.push($select.children("[value=" + itemValue + "]"));
+			}
+
+			$select.children().filter(function () {
+				return $.inArray(this.value, values) === -1;
+			}).each(function () {
+				items.push($(this));
+			});
+
+			$select.empty();
+
+			for (var i = 0; i < items.length; i++) {
+				$select.append(items[i]);
 			}
 		},
 
@@ -601,6 +674,14 @@
 			self._trigger("onChange");
 
 			self._refresh();
+		},
+
+		getContainerId: function ($element) {
+			return $element.attr("id") + "_pickList";
+		},
+
+		getContainerSelector: function($element) {
+			return "#" + $element.attr("id") + "_pickList";
 		},
 
 		_createSelectItem: function(item)
